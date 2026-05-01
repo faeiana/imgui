@@ -136,3 +136,5 @@ end
 return setmetatable({}, ImGui)
 
 ]])()
+
+return ImGui
