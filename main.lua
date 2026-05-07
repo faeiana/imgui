@@ -2,10 +2,11 @@ local ImGui = {}
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
 local LocalPlayer = Players.LocalPlayer
 
-local function new(class, props, parent)
+local function make(class, props, parent)
     local obj = Instance.new(class)
     for k, v in pairs(props or {}) do
         obj[k] = v
@@ -14,28 +15,41 @@ local function new(class, props, parent)
     return obj
 end
 
-local function corner(parent, radius)
-    new("UICorner", {
-        CornerRadius = UDim.new(0, radius or 6)
-    }, parent)
+local function round(obj, px)
+    make("UICorner", {
+        CornerRadius = UDim.new(0, px or 6)
+    }, obj)
 end
 
-local function stroke(parent, color)
-    new("UIStroke", {
-        Color = color or Color3.fromRGB(70, 70, 80),
-        Thickness = 1
-    }, parent)
+local function safeCallback(fn, self, value)
+    if typeof(fn) == "function" then
+        task.spawn(function()
+            fn(self, value)
+        end)
+    end
 end
 
-local function makeDraggable(frame, dragHandle)
+local function getParent()
+    local ok, parent = pcall(function()
+        return CoreGui
+    end)
+
+    if ok and parent then
+        return parent
+    end
+
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function draggable(frame, handle)
     local dragging = false
-    local dragStart
     local startPos
+    local startInput
 
-    dragHandle.InputBegan:Connect(function(input)
+    handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
-            dragStart = input.Position
+            startInput = input.Position
             startPos = frame.Position
         end
     end)
@@ -48,7 +62,7 @@ local function makeDraggable(frame, dragHandle)
 
     UIS.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
+            local delta = input.Position - startInput
             frame.Position = UDim2.new(
                 startPos.X.Scale,
                 startPos.X.Offset + delta.X,
@@ -59,84 +73,126 @@ local function makeDraggable(frame, dragHandle)
     end)
 end
 
-function ImGui:Window(config)
+function ImGui:CreateWindow(config)
     config = config or {}
 
-    local gui = new("ScreenGui", {
-        Name = config.Name or "ImGui",
+    local screenGui = make("ScreenGui", {
+        Name = "FaeianaImGui",
         ResetOnSpawn = false,
+        IgnoreGuiInset = true,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    }, LocalPlayer:WaitForChild("PlayerGui"))
+    }, getParent())
 
-    local main = new("Frame", {
-        Size = config.Size or UDim2.fromOffset(560, 390),
-        Position = config.Position or UDim2.fromScale(0.5, 0.5),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.fromRGB(22, 22, 28),
+    local main = make("Frame", {
+        Name = "Window",
+        Size = config.Size or UDim2.fromOffset(400, 480),
+        Position = config.Position or UDim2.fromScale(0.5, 0.2),
+        AnchorPoint = Vector2.new(0.5, 0),
+        BackgroundColor3 = Color3.fromRGB(18, 18, 23),
         BorderSizePixel = 0
-    }, gui)
-    corner(main, 8)
-    stroke(main)
+    }, screenGui)
+    round(main, 7)
 
-    local top = new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 38),
-        BackgroundColor3 = Color3.fromRGB(30, 30, 38),
+    make("UIStroke", {
+        Color = Color3.fromRGB(76, 76, 92),
+        Thickness = 1,
+        Transparency = 0.15
+    }, main)
+
+    local title = make("TextLabel", {
+        Name = "Title",
+        Size = UDim2.new(1, 0, 0, 39),
+        BackgroundColor3 = Color3.fromRGB(29, 29, 38),
         BorderSizePixel = 0,
-        Text = config.Title or "ImGui Window",
-        TextColor3 = Color3.fromRGB(235, 235, 245),
-        TextSize = 15,
-        Font = Enum.Font.GothamSemibold
+        Text = config.Title or "Window",
+        TextColor3 = Color3.fromRGB(235, 235, 242),
+        Font = Enum.Font.Gotham,
+        TextSize = 14
     }, main)
-    corner(top, 8)
+    round(title, 7)
 
-    makeDraggable(main, top)
+    draggable(main, title)
 
-    local tabBar = new("Frame", {
-        Size = UDim2.new(0, 140, 1, -46),
-        Position = UDim2.fromOffset(8, 42),
-        BackgroundTransparency = 1
+    local tabHolder = make("Frame", {
+        Name = "Tabs",
+        Size = UDim2.new(0, 112, 1, -51),
+        Position = UDim2.fromOffset(8, 45),
+        BackgroundTransparency = 1,
+        Visible = true
     }, main)
 
-    new("UIListLayout", {
+    make("UIListLayout", {
         Padding = UDim.new(0, 6),
         SortOrder = Enum.SortOrder.LayoutOrder
-    }, tabBar)
+    }, tabHolder)
 
-    local content = new("Frame", {
-        Size = UDim2.new(1, -160, 1, -50),
-        Position = UDim2.fromOffset(152, 42),
-        BackgroundTransparency = 1
+    local pageHolder = make("Frame", {
+        Name = "Pages",
+        Size = UDim2.new(1, -132, 1, -53),
+        Position = UDim2.fromOffset(124, 45),
+        BackgroundTransparency = 1,
+        Visible = true
     }, main)
 
+    local emptyText = make("TextLabel", {
+        Name = "EmptyText",
+        Size = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.fromOffset(10, 8),
+        BackgroundTransparency = 1,
+        Text = "waiting for tabs...",
+        TextColor3 = Color3.fromRGB(120, 120, 130),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left
+    }, pageHolder)
+
     local window = {
-        Gui = gui,
+        Gui = screenGui,
         Main = main,
-        Tabs = {},
-        CurrentTab = nil
+        Visible = true,
+        Tabs = {}
     }
 
-    function window:TabCreate(name)
-        local tabButton = new("TextButton", {
-            Size = UDim2.new(1, 0, 0, 34),
-            BackgroundColor3 = Color3.fromRGB(34, 34, 43),
-            Text = name,
-            TextColor3 = Color3.fromRGB(210, 210, 220),
-            TextSize = 14,
-            Font = Enum.Font.Gotham,
-            AutoButtonColor = false
-        }, tabBar)
-        corner(tabButton, 6)
+    function window:SetVisible(state)
+        self.Visible = state
+        screenGui.Enabled = state
+    end
 
-        local page = new("ScrollingFrame", {
+    function window:CreateTab(tabConfig)
+        local name = "Tab"
+
+        if typeof(tabConfig) == "table" then
+            name = tabConfig.Name or tabConfig.Title or "Tab"
+        else
+            name = tostring(tabConfig)
+        end
+
+        emptyText.Visible = false
+
+        local tabButton = make("TextButton", {
+            Name = name .. "_Button",
+            Size = UDim2.new(1, 0, 0, 31),
+            BackgroundColor3 = Color3.fromRGB(29, 29, 38),
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+            Text = name,
+            TextColor3 = Color3.fromRGB(215, 215, 225),
+            Font = Enum.Font.Gotham,
+            TextSize = 12
+        }, tabHolder)
+        round(tabButton, 5)
+
+        local page = make("ScrollingFrame", {
+            Name = name .. "_Page",
             Size = UDim2.fromScale(1, 1),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
-            CanvasSize = UDim2.new(),
-            ScrollBarThickness = 4,
+            ScrollBarThickness = 3,
+            CanvasSize = UDim2.fromOffset(0, 0),
             Visible = false
-        }, content)
+        }, pageHolder)
 
-        local layout = new("UIListLayout", {
+        local layout = make("UIListLayout", {
             Padding = UDim.new(0, 8),
             SortOrder = Enum.SortOrder.LayoutOrder
         }, page)
@@ -146,191 +202,162 @@ function ImGui:Window(config)
         end)
 
         local tab = {
-            Name = name,
             Button = tabButton,
-            Page = page
+            Page = page,
+            Name = name
         }
 
         local function selectTab()
-            for _, other in pairs(window.Tabs) do
+            for _, other in ipairs(window.Tabs) do
                 other.Page.Visible = false
-                other.Button.BackgroundColor3 = Color3.fromRGB(34, 34, 43)
+                other.Button.BackgroundColor3 = Color3.fromRGB(29, 29, 38)
             end
 
             page.Visible = true
-            tabButton.BackgroundColor3 = Color3.fromRGB(62, 91, 170)
-            window.CurrentTab = tab
+            tabButton.BackgroundColor3 = Color3.fromRGB(74, 105, 185)
         end
 
         tabButton.MouseButton1Click:Connect(selectTab)
 
-        local function base(labelText, height)
-            local holder = new("Frame", {
-                Size = UDim2.new(1, -6, 0, height or 38),
-                BackgroundColor3 = Color3.fromRGB(30, 30, 38),
-                BorderSizePixel = 0
+        local function row(height)
+            local frame = make("Frame", {
+                Size = UDim2.new(1, -6, 0, height),
+                BackgroundColor3 = Color3.fromRGB(26, 26, 34),
+                BorderSizePixel = 0,
+                Visible = true
             }, page)
-            corner(holder, 6)
-            return holder
+            round(frame, 5)
+            return frame
         end
 
-        function tab:Label(text)
-            local holder = base(text, 34)
-            local label = new("TextLabel", {
+        function tab:Label(config)
+            local text = typeof(config) == "table" and config.Text or tostring(config)
+            local frame = row(30)
+
+            make("TextLabel", {
                 Size = UDim2.new(1, -16, 1, 0),
                 Position = UDim2.fromOffset(8, 0),
                 BackgroundTransparency = 1,
                 Text = text,
-                TextColor3 = Color3.fromRGB(225, 225, 235),
-                TextSize = 14,
+                TextColor3 = Color3.fromRGB(170, 170, 182),
                 Font = Enum.Font.Gotham,
+                TextSize = 12,
                 TextXAlignment = Enum.TextXAlignment.Left
-            }, holder)
+            }, frame)
 
-            return {
-                Instance = holder,
-                Set = function(_, value)
-                    label.Text = value
-                end
-            }
+            return frame
         end
 
-        function tab:Button(text, callback)
-            callback = callback or function() end
+        function tab:Checkbox(config)
+            local value = config.Value == true
+            local frame = row(36)
 
-            local btn = new("TextButton", {
-                Size = UDim2.new(1, -6, 0, 38),
-                BackgroundColor3 = Color3.fromRGB(62, 91, 170),
-                Text = text,
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = 14,
-                Font = Enum.Font.GothamSemibold,
-                AutoButtonColor = false
-            }, page)
-            corner(btn, 6)
-
-            btn.MouseButton1Click:Connect(function()
-                callback()
-            end)
-
-            return btn
-        end
-
-        function tab:Toggle(text, default, callback)
-            callback = callback or function() end
-            local value = default == true
-            local holder = base(text, 40)
-
-            local label = new("TextLabel", {
-                Size = UDim2.new(1, -64, 1, 0),
+            make("TextLabel", {
+                Size = UDim2.new(1, -54, 1, 0),
                 Position = UDim2.fromOffset(10, 0),
                 BackgroundTransparency = 1,
-                Text = text,
-                TextColor3 = Color3.fromRGB(225, 225, 235),
-                TextSize = 14,
+                Text = config.Label or "Checkbox",
+                TextColor3 = Color3.fromRGB(235, 235, 242),
                 Font = Enum.Font.Gotham,
+                TextSize = 13,
                 TextXAlignment = Enum.TextXAlignment.Left
-            }, holder)
+            }, frame)
 
-            local toggle = new("TextButton", {
-                Size = UDim2.fromOffset(42, 22),
-                Position = UDim2.new(1, -52, 0.5, -11),
-                BackgroundColor3 = value and Color3.fromRGB(62, 170, 105) or Color3.fromRGB(70, 70, 80),
-                Text = "",
-                AutoButtonColor = false
-            }, holder)
-            corner(toggle, 11)
+            local box = make("TextButton", {
+                Size = UDim2.fromOffset(22, 22),
+                Position = UDim2.new(1, -32, 0.5, -11),
+                BackgroundColor3 = value and Color3.fromRGB(74, 105, 185) or Color3.fromRGB(45, 45, 55),
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                Text = value and "X" or "",
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Font = Enum.Font.GothamBold,
+                TextSize = 12
+            }, frame)
+            round(box, 4)
 
-            local knob = new("Frame", {
-                Size = UDim2.fromOffset(18, 18),
-                Position = value and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2),
-                BackgroundColor3 = Color3.fromRGB(245, 245, 245),
-                BorderSizePixel = 0
-            }, toggle)
-            corner(knob, 9)
-
-            local object = {}
+            local object = frame
 
             function object:Set(newValue)
                 value = newValue == true
-                TweenService:Create(toggle, TweenInfo.new(0.12), {
-                    BackgroundColor3 = value and Color3.fromRGB(62, 170, 105) or Color3.fromRGB(70, 70, 80)
-                }):Play()
-                TweenService:Create(knob, TweenInfo.new(0.12), {
-                    Position = value and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2)
-                }):Play()
-                callback(value)
+                box.Text = value and "X" or ""
+                box.BackgroundColor3 = value and Color3.fromRGB(74, 105, 185) or Color3.fromRGB(45, 45, 55)
+                safeCallback(config.Callback, object, value)
             end
 
             function object:Get()
                 return value
             end
 
-            toggle.MouseButton1Click:Connect(function()
+            box.MouseButton1Click:Connect(function()
                 object:Set(not value)
             end)
 
             return object
         end
 
-        function tab:Slider(text, min, max, default, callback)
-            min = min or 0
-            max = max or 100
-            callback = callback or function() end
+        function tab:Slider(config)
+            local min = config.MinValue or config.Min or 0
+            local max = config.MaxValue or config.Max or 100
+            local value = math.clamp(config.Value or min, min, max)
+            local frame = row(54)
 
-            local value = math.clamp(default or min, min, max)
-            local holder = base(text, 58)
-
-            local label = new("TextLabel", {
+            local label = make("TextLabel", {
                 Size = UDim2.new(1, -20, 0, 24),
-                Position = UDim2.fromOffset(10, 2),
+                Position = UDim2.fromOffset(10, 0),
                 BackgroundTransparency = 1,
-                Text = text .. ": " .. tostring(value),
-                TextColor3 = Color3.fromRGB(225, 225, 235),
-                TextSize = 14,
+                TextColor3 = Color3.fromRGB(235, 235, 242),
                 Font = Enum.Font.Gotham,
+                TextSize = 13,
                 TextXAlignment = Enum.TextXAlignment.Left
-            }, holder)
+            }, frame)
 
-            local bar = new("TextButton", {
+            local bar = make("TextButton", {
                 Size = UDim2.new(1, -20, 0, 8),
-                Position = UDim2.fromOffset(10, 38),
-                BackgroundColor3 = Color3.fromRGB(55, 55, 65),
-                Text = "",
-                AutoButtonColor = false
-            }, holder)
-            corner(bar, 4)
+                Position = UDim2.fromOffset(10, 36),
+                BackgroundColor3 = Color3.fromRGB(47, 47, 58),
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                Text = ""
+            }, frame)
+            round(bar, 4)
 
-            local fill = new("Frame", {
-                Size = UDim2.fromScale((value - min) / (max - min), 1),
-                BackgroundColor3 = Color3.fromRGB(62, 91, 170),
+            local fill = make("Frame", {
+                Size = UDim2.fromScale(0, 1),
+                BackgroundColor3 = Color3.fromRGB(74, 105, 185),
                 BorderSizePixel = 0
             }, bar)
-            corner(fill, 4)
+            round(fill, 4)
 
-            local dragging = false
-            local object = {}
+            local object = frame
+
+            local function refresh()
+                local alpha = (value - min) / (max - min)
+                fill.Size = UDim2.fromScale(math.clamp(alpha, 0, 1), 1)
+                label.Text = (config.Label or "Slider") .. ": " .. tostring(math.floor(value * 100) / 100)
+            end
 
             function object:Set(newValue)
                 value = math.clamp(newValue, min, max)
-                local alpha = (value - min) / (max - min)
-                fill.Size = UDim2.fromScale(alpha, 1)
-                label.Text = text .. ": " .. tostring(math.floor(value * 100) / 100)
-                callback(value)
+                refresh()
+                safeCallback(config.Callback, object, value)
             end
 
             function object:Get()
                 return value
             end
 
-            local function updateFromMouse()
-                local alpha = math.clamp((UIS:GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            local dragging = false
+
+            local function setFromMouse()
+                local mouseX = UIS:GetMouseLocation().X
+                local alpha = math.clamp((mouseX - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
                 object:Set(min + ((max - min) * alpha))
             end
 
             bar.MouseButton1Down:Connect(function()
                 dragging = true
-                updateFromMouse()
+                setFromMouse()
             end)
 
             UIS.InputEnded:Connect(function(input)
@@ -341,130 +368,167 @@ function ImGui:Window(config)
 
             UIS.InputChanged:Connect(function(input)
                 if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    updateFromMouse()
+                    setFromMouse()
                 end
             end)
 
+            refresh()
             return object
         end
 
-        function tab:Textbox(text, default, callback)
-            callback = callback or function() end
-            local holder = base(text, 42)
-
-            local box = new("TextBox", {
-                Size = UDim2.new(1, -20, 0, 28),
-                Position = UDim2.fromOffset(10, 7),
-                BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-                Text = default or "",
-                PlaceholderText = text,
-                TextColor3 = Color3.fromRGB(235, 235, 245),
-                PlaceholderColor3 = Color3.fromRGB(150, 150, 160),
-                TextSize = 14,
-                Font = Enum.Font.Gotham,
-                ClearTextOnFocus = false
-            }, holder)
-            corner(box, 5)
-
-            box.FocusLost:Connect(function()
-                callback(box.Text)
-            end)
-
-            return box
-        end
-
-        function tab:Dropdown(text, options, default, callback)
-            options = options or {}
-            callback = callback or function() end
-
-            local value = default or options[1]
+        function tab:Combo(config)
+            local items = config.Items or {}
+            local value = config.Value or items[1] or "None"
             local open = false
-            local holder = base(text, 38)
+            local frame = row(36)
 
-            local btn = new("TextButton", {
-                Size = UDim2.new(1, -20, 0, 28),
+            local button = make("TextButton", {
+                Size = UDim2.new(1, -20, 0, 26),
                 Position = UDim2.fromOffset(10, 5),
-                BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-                Text = text .. ": " .. tostring(value or "None"),
-                TextColor3 = Color3.fromRGB(235, 235, 245),
-                TextSize = 14,
+                BackgroundColor3 = Color3.fromRGB(39, 39, 49),
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                TextColor3 = Color3.fromRGB(235, 235, 242),
                 Font = Enum.Font.Gotham,
-                AutoButtonColor = false
-            }, holder)
-            corner(btn, 5)
+                TextSize = 12
+            }, frame)
+            round(button, 5)
 
-            local optionFrame = new("Frame", {
-                Size = UDim2.new(1, -20, 0, #options * 28),
-                Position = UDim2.fromOffset(10, 36),
-                BackgroundColor3 = Color3.fromRGB(35, 35, 44),
+            local list = make("Frame", {
+                Size = UDim2.new(1, -20, 0, #items * 25),
+                Position = UDim2.fromOffset(10, 34),
+                BackgroundColor3 = Color3.fromRGB(34, 34, 43),
                 BorderSizePixel = 0,
                 Visible = false
-            }, holder)
-            corner(optionFrame, 5)
+            }, frame)
+            round(list, 5)
 
-            new("UIListLayout", {
+            make("UIListLayout", {
                 SortOrder = Enum.SortOrder.LayoutOrder
-            }, optionFrame)
+            }, list)
+
+            local object = frame
+
+            local function refresh()
+                button.Text = (config.Label or "Combo") .. ": " .. tostring(value)
+            end
 
             local function setOpen(state)
                 open = state
-                optionFrame.Visible = open
-                holder.Size = open and UDim2.new(1, -6, 0, 42 + (#options * 28)) or UDim2.new(1, -6, 0, 38)
+                list.Visible = state
+                frame.Size = state and UDim2.new(1, -6, 0, 40 + (#items * 25)) or UDim2.new(1, -6, 0, 36)
             end
 
-            for _, option in ipairs(options) do
-                local opt = new("TextButton", {
-                    Size = UDim2.new(1, 0, 0, 28),
-                    BackgroundTransparency = 1,
-                    Text = tostring(option),
-                    TextColor3 = Color3.fromRGB(220, 220, 230),
-                    TextSize = 13,
-                    Font = Enum.Font.Gotham,
-                    AutoButtonColor = false
-                }, optionFrame)
+            function object:Set(newValue)
+                value = newValue
+                refresh()
+                safeCallback(config.Callback, object, value)
+            end
 
-                opt.MouseButton1Click:Connect(function()
-                    value = option
-                    btn.Text = text .. ": " .. tostring(value)
+            function object:Get()
+                return value
+            end
+
+            for _, item in ipairs(items) do
+                local option = make("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 25),
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AutoButtonColor = false,
+                    Text = tostring(item),
+                    TextColor3 = Color3.fromRGB(220, 220, 230),
+                    Font = Enum.Font.Gotham,
+                    TextSize = 12
+                }, list)
+
+                option.MouseButton1Click:Connect(function()
+                    value = item
+                    refresh()
                     setOpen(false)
-                    callback(value)
+                    safeCallback(config.Callback, object, value)
                 end)
             end
 
-            btn.MouseButton1Click:Connect(function()
+            button.MouseButton1Click:Connect(function()
                 setOpen(not open)
             end)
 
-            return {
-                Get = function()
-                    return value
-                end,
-                Set = function(_, newValue)
-                    value = newValue
-                    btn.Text = text .. ": " .. tostring(value)
-                    callback(value)
+            refresh()
+            return object
+        end
+
+        function tab:Keybind(config)
+            local value = config.Value or Enum.KeyCode.Unknown
+            local waiting = false
+            local frame = row(36)
+
+            make("TextLabel", {
+                Size = UDim2.new(1, -118, 1, 0),
+                Position = UDim2.fromOffset(10, 0),
+                BackgroundTransparency = 1,
+                Text = config.Label or "Keybind",
+                TextColor3 = Color3.fromRGB(235, 235, 242),
+                Font = Enum.Font.Gotham,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left
+            }, frame)
+
+            local button = make("TextButton", {
+                Size = UDim2.fromOffset(92, 24),
+                Position = UDim2.new(1, -102, 0.5, -12),
+                BackgroundColor3 = Color3.fromRGB(39, 39, 49),
+                BorderSizePixel = 0,
+                AutoButtonColor = false,
+                Text = value.Name or "None",
+                TextColor3 = Color3.fromRGB(235, 235, 242),
+                Font = Enum.Font.Gotham,
+                TextSize = 12
+            }, frame)
+            round(button, 5)
+
+            button.MouseButton1Click:Connect(function()
+                waiting = true
+                button.Text = "press key"
+            end)
+
+            UIS.InputBegan:Connect(function(input, processed)
+                if processed or not waiting then
+                    return
                 end
-            }
+
+                if input.KeyCode == Enum.KeyCode.Unknown then
+                    return
+                end
+
+                waiting = false
+                value = input.KeyCode
+                button.Text = value.Name
+                safeCallback(config.Callback, frame, value)
+            end)
+
+            return frame
+        end
+
+        function tab:Rebuild()
+            return self
         end
 
         table.insert(window.Tabs, tab)
 
-        if not window.CurrentTab then
+        if #window.Tabs == 1 then
             selectTab()
         end
 
         return tab
     end
 
-    function window:Destroy()
-        gui:Destroy()
+    function window:TabCreate(name)
+        return self:CreateTab({ Name = name })
     end
 
     return window
 end
 
-ImGui.CreateWindow = function(self, config)
-    return self:Window(config)
-end
+ImGui.Window = ImGui.CreateWindow
 
 return ImGui
