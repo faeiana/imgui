@@ -1,140 +1,253 @@
-local ImGui = loadstring([[
+local ImGui = {
+    Animations = {
+        Buttons = {
+            MouseEnter = {
+                BackgroundTransparency = 0.5,
+            },
 
-local ImGui = {}
-ImGui.__index = ImGui
+            MouseLeave = {
+                BackgroundTransparency = 0.7,
+            }
+        },
 
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+        Tabs = {
+            MouseEnter = {
+                BackgroundTransparency = 0.5,
+            },
 
--- SCREEN GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ImGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = PlayerGui
+            MouseLeave = {
+                BackgroundTransparency = 1,
+            }
+        },
 
--- WINDOW
-function ImGui:CreateWindow(cfg)
-    local Window = {}
+        Inputs = {
+            MouseEnter = {
+                BackgroundTransparency = 0,
+            },
 
-    local Frame = Instance.new("Frame")
-    Frame.Size = cfg.Size or UDim2.fromOffset(400, 300)
-    Frame.Position = cfg.Position or UDim2.fromScale(0.5,0.5)
-    Frame.BackgroundColor3 = Color3.fromRGB(30,30,35)
-    Frame.Parent = ScreenGui
-    Frame.Active = true
-    Frame.Draggable = true
+            MouseLeave = {
+                BackgroundTransparency = 0.5,
+            }
+        },
 
-    Window.Frame = Frame
-    Window.Visible = true
+        WindowBorder = {
+            Selected = {
+                Transparency = 0,
+                Thickness = 1
+            },
 
-    function Window:SetVisible(v)
-        Frame.Visible = v
-        self.Visible = v
-    end
+            Deselected = {
+                Transparency = 0.7,
+                Thickness = 1
+            }
+        },
+    },
 
-    function Window:CreateTab(tabCfg)
-        local Tab = {}
+    Windows = {},
+    Animation = TweenInfo.new(0.1),
+    UIAssetId = "rbxassetid://76246418997296"
+}
 
-        local Container = Instance.new("Frame")
-        Container.Size = UDim2.new(1,0,1,0)
-        Container.BackgroundTransparency = 1
-        Container.Visible = true
-        Container.Parent = Frame
+--// Universal functions
+local NullFunction = function() end
 
-        local layout = Instance.new("UIListLayout", Container)
-        layout.Padding = UDim.new(0,5)
-
-        function Tab:Checkbox(cfg)
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1,0,0,30)
-            btn.Text = cfg.Label .. ": " .. tostring(cfg.Value)
-            btn.Parent = Container
-
-            local state = cfg.Value
-
-            btn.MouseButton1Click:Connect(function()
-                state = not state
-                btn.Text = cfg.Label .. ": " .. tostring(state)
-                if cfg.Callback then
-                    cfg.Callback(nil, state)
-                end
-            end)
-
-            return btn
-        end
-
-        function Tab:Slider(cfg)
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(1,0,0,40)
-            frame.Parent = Container
-
-            local label = Instance.new("TextLabel", frame)
-            label.Size = UDim2.new(1,0,0,20)
-            label.Text = cfg.Label .. ": " .. tostring(cfg.Value)
-
-            local bar = Instance.new("TextButton", frame)
-            bar.Position = UDim2.new(0,0,0,20)
-            bar.Size = UDim2.new(1,0,0,20)
-            bar.Text = ""
-
-            bar.MouseButton1Click:Connect(function()
-                local new = math.random(cfg.MinValue, cfg.MaxValue)
-                label.Text = cfg.Label .. ": " .. tostring(new)
-                if cfg.Callback then
-                    cfg.Callback(nil, new)
-                end
-            end)
-        end
-
-        function Tab:Combo(cfg)
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1,0,0,30)
-            btn.Text = cfg.Label
-            btn.Parent = Container
-
-            btn.MouseButton1Click:Connect(function()
-                local val = cfg.Items[math.random(1,#cfg.Items)]
-                btn.Text = cfg.Label .. ": " .. val
-                if cfg.Callback then
-                    cfg.Callback(nil, val)
-                end
-            end)
-        end
-
-        function Tab:Keybind(cfg)
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(1,0,0,30)
-            btn.Text = cfg.Label .. ": " .. tostring(cfg.Value.Name)
-            btn.Parent = Container
-
-            btn.MouseButton1Click:Connect(function()
-                btn.Text = "Press key..."
-                local input = UIS.InputBegan:Wait()
-                cfg.Value = input.KeyCode
-                btn.Text = cfg.Label .. ": " .. input.KeyCode.Name
-                if cfg.Callback then
-                    cfg.Callback(nil, input.KeyCode)
-                end
-            end)
-        end
-
-        function Tab:Label(cfg)
-            local lbl = Instance.new("TextLabel")
-            lbl.Size = UDim2.new(1,0,0,25)
-            lbl.Text = cfg.Text
-            lbl.Parent = Container
-        end
-
-        return Tab
-    end
-
-    return Window
+local CloneRef = cloneref or function(_)
+    return _
 end
 
-return setmetatable({}, ImGui)
+local function GetService(...): ServiceProvider
+    return CloneRef(game:GetService(...))
+end
 
-]])()
+function ImGui:Warn(...)
+    if self.NoWarnings then
+        return
+    end
 
-return ImGui
+    return warn("[IMGUI]", ...)
+end
+
+--// Services
+local TweenService: TweenService = GetService("TweenService")
+local UserInputService: UserInputService = GetService("UserInputService")
+local Players: Players = GetService("Players")
+local CoreGui = GetService("CoreGui")
+local RunService: RunService = GetService("RunService")
+
+--// LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer.PlayerGui
+local Mouse = LocalPlayer:GetMouse()
+
+--// ImGui Config
+local IsStudio = RunService:IsStudio()
+
+ImGui.NoWarnings = not IsStudio
+
+--// Prefabs
+function ImGui:FetchUI()
+
+    --// Cache check
+    local CacheName = "DepsoImGui"
+
+    if _G[CacheName] then
+        self:Warn("Prefabs loaded from Cache")
+        return _G[CacheName]
+    end
+
+    local UI = nil
+
+    --// Universal
+    if not IsStudio then
+        local UIAssetId = ImGui.UIAssetId
+        UI = game:GetObjects(UIAssetId)[1]
+
+    else
+
+        --// Studio
+        local UIName = "DepsoImGui"
+        UI = PlayerGui:FindFirstChild(UIName) or script.DepsoImGui
+    end
+
+    _G[CacheName] = UI
+
+    return UI
+end
+
+local UI = ImGui:FetchUI()
+local Prefabs = UI.Prefabs
+
+ImGui.Prefabs = Prefabs
+Prefabs.Visible = false
+
+--// Styles
+local AddionalStyles = {
+
+    [{
+        Name = "Border"
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        local Outline = GuiObject:FindFirstChildOfClass("UIStroke")
+
+        if not Outline then
+            return
+        end
+
+        local BorderThickness = Class.BorderThickness
+
+        if BorderThickness then
+            Outline.Thickness = BorderThickness
+        end
+
+        Outline.Enabled = Value
+    end,
+
+    [{
+        Name = "Ratio"
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        local RatioAxis = Class.RatioAxis or "Height"
+        local AspectRatio = Class.Ratio or 4 / 3
+        local AspectType = Class.AspectType or Enum.AspectType.ScaleWithParentSize
+
+        local Ratio = GuiObject:FindFirstChildOfClass("UIAspectRatioConstraint")
+
+        if not Ratio then
+            Ratio = ImGui:CreateInstance("UIAspectRatioConstraint", GuiObject)
+        end
+
+        Ratio.DominantAxis = Enum.DominantAxis[RatioAxis]
+        Ratio.AspectType = AspectType
+        Ratio.AspectRatio = AspectRatio
+    end,
+
+    [{
+        Name = "CornerRadius",
+        Recursive = true
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        local UICorner = GuiObject:FindFirstChildOfClass("UICorner")
+
+        if not UICorner then
+            UICorner = ImGui:CreateInstance("UICorner", GuiObject)
+        end
+
+        UICorner.CornerRadius = Class.CornerRadius
+    end,
+
+    [{
+        Name = "Label"
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        local Label = GuiObject:FindFirstChild("Label")
+
+        if not Label then
+            return
+        end
+
+        Label.Text = Class.Label
+
+        function Class:SetLabel(Text)
+            Label.Text = Text
+            return Class
+        end
+    end,
+
+    [{
+        Name = "NoGradient",
+        Aliases = {
+            "NoGradientAll"
+        },
+
+        Recursive = true
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        local UIGradient = GuiObject:FindFirstChildOfClass("UIGradient")
+
+        if not UIGradient then
+            return
+        end
+
+        UIGradient.Enabled = not Value
+    end,
+
+    --// Addional functions for classes
+    [{
+        Name = "Callback"
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        function Class:SetCallback(NewCallback)
+            Class.Callback = NewCallback
+            return Class
+        end
+
+        function Class:FireCallback(NewCallback)
+            return Class.Callback(GuiObject)
+        end
+    end,
+
+    [{
+        Name = "Value"
+    }] = function(GuiObject: GuiObject, Value, Class)
+
+        function Class:GetValue()
+            return Class.Value
+        end
+    end,
+}
+
+function ImGui:GetName(Name: string)
+    local Format = "%s_"
+    return Format:format(Name)
+end
+
+function ImGui:CreateInstance(Class, Parent, Properties)
+
+    local Instance = Instance.new(Class, Parent)
+
+    for Key, Value in next, Properties or {} do
+        Instance[Key] = Value
+    end
+
+    return Instance
+end
